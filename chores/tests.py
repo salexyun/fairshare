@@ -800,3 +800,42 @@ class LeaderboardViewTests(TestCase):
         response = self.client.get(reverse("chores:leaderboard"))
         names = [person.name for person in response.context["people"]]
         self.assertEqual(names, ["Alex", "Sam"])
+
+
+class HistoryViewTests(TestCase):
+    def setUp(self):
+        self.chore = Chore.objects.create(title="Dishes", points=4)
+        self.alex = Person.objects.create(name="Alex")
+
+    def test_shows_fallback_when_nothing_completed(self):
+        response = self.client.get(reverse("chores:history"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No chores completed yet")
+
+    def test_lists_completion_with_person_chore_and_points(self):
+        instance = ChoreInstance.objects.create(
+            chore=self.chore, status=ChoreInstance.Status.DONE
+        )
+        Completion.objects.create(
+            instance=instance, person=self.alex, points_awarded=4
+        )
+        response = self.client.get(reverse("chores:history"))
+        self.assertContains(response, "Alex")
+        self.assertContains(response, "Dishes")
+        self.assertContains(response, "4")
+
+    def test_ordered_most_recent_first(self):
+        first_instance = ChoreInstance.objects.create(
+            chore=self.chore, status=ChoreInstance.Status.DONE
+        )
+        first = Completion.objects.create(
+            instance=first_instance, person=self.alex, points_awarded=4
+        )
+        second_instance = ChoreInstance.objects.create(
+            chore=self.chore, status=ChoreInstance.Status.DONE
+        )
+        second = Completion.objects.create(
+            instance=second_instance, person=self.alex, points_awarded=4
+        )
+        response = self.client.get(reverse("chores:history"))
+        self.assertEqual(list(response.context["completions"]), [second, first])

@@ -1,0 +1,31 @@
+{% extends "chores/base.html" %}
+
+{% block title %}History — FairShare{% endblock %}
+
+{% block content %}
+    <h2>History</h2>
+    {% if completions %}
+        <table>
+            <thead>
+                <tr>
+                    <th>When</th>
+                    <th>Person</th>
+                    <th>Chore</th>
+                    <th>Points</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for completion in completions %}
+                    <tr>
+                        <td>{{ completion.completed_at|date:"Y-m-d H:i" }}</td>
+                        <td>{{ completion.person.name }}</td>
+                        <td>{{ completion.instance.chore.title }}</td>
+                        <td>{{ completion.points_awarded }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No chores completed yet.</p>
+    {% endif %}
+{% endblock %}

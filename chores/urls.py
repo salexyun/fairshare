@@ -17,4 +17,5 @@ urlpatterns = [
     ),
     path("chores/add/", views.add_chore, name="add_chore"),
     path("leaderboard/", views.leaderboard, name="leaderboard"),
+    path("history/", views.history, name="history"),
 ]

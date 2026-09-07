@@ -111,3 +111,9 @@ def leaderboard(request):
     """Running point totals per person, most points first."""
     people = people_with_total_points().order_by("-total_points", "name")
     return render(request, "chores/leaderboard.html", {"people": people})
+
+
+def history(request):
+    """Chronological log of completions: who did what, when, for how many points."""
+    completions = Completion.objects.select_related("person", "instance__chore")
+    return render(request, "chores/history.html", {"completions": completions})
