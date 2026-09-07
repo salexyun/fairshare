@@ -1,7 +1,7 @@
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .models import Person
+from .models import ChoreInstance, Person
 from .session import clear_current_person, set_current_person
 
 
@@ -26,3 +26,11 @@ def switch_person(request):
     if request.method == "POST":
         clear_current_person(request)
     return redirect("chores:person_picker")
+
+
+def chore_pool(request):
+    """Shared pool of open chores — recurring and one-off alike — anyone can see."""
+    instances = ChoreInstance.objects.filter(
+        status=ChoreInstance.Status.OPEN
+    ).select_related("chore")
+    return render(request, "chores/chore_pool.html", {"instances": instances})

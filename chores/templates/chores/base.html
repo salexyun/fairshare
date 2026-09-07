@@ -7,6 +7,9 @@
 <body>
     <header>
         <h1><a href="{% url 'chores:person_picker' %}">FairShare</a></h1>
+        <nav>
+            <a href="{% url 'chores:chore_pool' %}">Chore Pool</a>
+        </nav>
         {% if current_person %}
             <p>
                 Acting as <strong>{{ current_person.name }}</strong>

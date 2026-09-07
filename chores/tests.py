@@ -214,3 +214,50 @@ class PersonPickerViewTests(TestCase):
         response = self.client.post(reverse("chores:switch_person"))
         self.assertRedirects(response, reverse("chores:person_picker"))
         self.assertNotIn(PERSON_SESSION_KEY, self.client.session)
+
+
+class ChorePoolViewTests(TestCase):
+    def setUp(self):
+        self.recurring = Chore.objects.create(
+            title="Take out trash", points=2, recurrence=Chore.Recurrence.WEEKLY
+        )
+        self.one_off = Chore.objects.create(
+            title="Fix leaky faucet", points=10, recurrence=Chore.Recurrence.NONE
+        )
+
+    def test_shows_fallback_when_pool_is_empty(self):
+        response = self.client.get(reverse("chores:chore_pool"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No open chores")
+
+    def test_lists_open_instances_from_recurring_and_one_off_chores(self):
+        ChoreInstance.objects.create(chore=self.recurring)
+        ChoreInstance.objects.create(chore=self.one_off)
+        response = self.client.get(reverse("chores:chore_pool"))
+        self.assertContains(response, "Take out trash")
+        self.assertContains(response, "Fix leaky faucet")
+        self.assertContains(response, "2")
+        self.assertContains(response, "10")
+
+    def test_excludes_claimed_and_done_instances(self):
+        person = Person.objects.create(name="Alex")
+        ChoreInstance.objects.create(
+            chore=self.recurring, status=ChoreInstance.Status.CLAIMED, claimed_by=person
+        )
+        ChoreInstance.objects.create(chore=self.one_off, status=ChoreInstance.Status.DONE)
+        response = self.client.get(reverse("chores:chore_pool"))
+        self.assertContains(response, "No open chores")
+        self.assertNotContains(response, "Take out trash")
+        self.assertNotContains(response, "Fix leaky faucet")
+
+    def test_open_instances_ordered_by_due_date(self):
+        later = ChoreInstance.objects.create(
+            chore=self.recurring, due_date=date.today() + timedelta(days=5)
+        )
+        sooner = ChoreInstance.objects.create(
+            chore=self.one_off, due_date=date.today() + timedelta(days=1)
+        )
+        response = self.client.get(reverse("chores:chore_pool"))
+        self.assertEqual(
+            list(response.context["instances"]), [sooner, later]
+        )

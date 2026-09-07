@@ -1,0 +1,29 @@
+{% extends "chores/base.html" %}
+
+{% block title %}Chore Pool — FairShare{% endblock %}
+
+{% block content %}
+    <h2>Chore Pool</h2>
+    {% if instances %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Chore</th>
+                    <th>Points</th>
+                    <th>Due</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for instance in instances %}
+                    <tr>
+                        <td>{{ instance.chore.title }}</td>
+                        <td>{{ instance.chore.points }}</td>
+                        <td>{{ instance.due_date|default:"—" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No open chores right now. 🎉</p>
+    {% endif %}
+{% endblock %}
