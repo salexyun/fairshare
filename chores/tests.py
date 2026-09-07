@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import Chore, ChoreInstance, Completion, Person
-from .services import generate_recurring_instances
+from .services import auto_assign_overdue_instances, generate_recurring_instances
 from .session import PERSON_SESSION_KEY
 
 
@@ -594,3 +594,117 @@ class GenerateRecurringChoresCommandTests(TestCase):
         out = StringIO()
         call_command("generate_recurring_chores", stdout=out)
         self.assertIn("No recurring chores due", out.getvalue())
+
+
+class AutoAssignOverdueInstancesTests(TestCase):
+    def setUp(self):
+        self.today = date(2026, 9, 7)
+        self.chore = Chore.objects.create(title="Dishes", points=3)
+        self.alex = Person.objects.create(name="Alex")
+        self.sam = Person.objects.create(name="Sam")
+
+    def test_no_instances_means_nothing_assigned(self):
+        self.assertEqual(auto_assign_overdue_instances(today=self.today), [])
+
+    def test_future_due_date_is_not_overdue(self):
+        instance = ChoreInstance.objects.create(
+            chore=self.chore, due_date=self.today + timedelta(days=1)
+        )
+        self.assertEqual(auto_assign_overdue_instances(today=self.today), [])
+        instance.refresh_from_db()
+        self.assertEqual(instance.status, ChoreInstance.Status.OPEN)
+
+    def test_due_today_is_not_yet_overdue(self):
+        instance = ChoreInstance.objects.create(chore=self.chore, due_date=self.today)
+        self.assertEqual(auto_assign_overdue_instances(today=self.today), [])
+        instance.refresh_from_db()
+        self.assertEqual(instance.status, ChoreInstance.Status.OPEN)
+
+    def test_no_due_date_is_never_overdue(self):
+        ChoreInstance.objects.create(chore=self.chore, due_date=None)
+        self.assertEqual(auto_assign_overdue_instances(today=self.today), [])
+
+    def test_past_due_open_instance_gets_assigned_to_lowest_points_person(self):
+        Completion.objects.create(
+            instance=ChoreInstance.objects.create(
+                chore=self.chore, status=ChoreInstance.Status.DONE
+            ),
+            person=self.alex,
+            points_awarded=10,
+        )
+        # Sam has 0 points, Alex has 10 — Sam should get the overdue chore.
+        overdue = ChoreInstance.objects.create(
+            chore=self.chore, due_date=self.today - timedelta(days=1)
+        )
+        assigned = auto_assign_overdue_instances(today=self.today)
+        self.assertEqual(assigned, [overdue])
+        overdue.refresh_from_db()
+        self.assertEqual(overdue.status, ChoreInstance.Status.CLAIMED)
+        self.assertEqual(overdue.claimed_by, self.sam)
+
+    def test_tied_points_broken_alphabetically(self):
+        overdue = ChoreInstance.objects.create(
+            chore=self.chore, due_date=self.today - timedelta(days=1)
+        )
+        assigned = auto_assign_overdue_instances(today=self.today)
+        self.assertEqual(assigned[0].claimed_by, self.alex)  # "Alex" < "Sam"
+
+    def test_already_claimed_instance_is_left_alone(self):
+        instance = ChoreInstance.objects.create(
+            chore=self.chore,
+            status=ChoreInstance.Status.CLAIMED,
+            claimed_by=self.sam,
+            due_date=self.today - timedelta(days=1),
+        )
+        self.assertEqual(auto_assign_overdue_instances(today=self.today), [])
+        instance.refresh_from_db()
+        self.assertEqual(instance.claimed_by, self.sam)
+
+    def test_done_instance_is_left_alone(self):
+        ChoreInstance.objects.create(
+            chore=self.chore,
+            status=ChoreInstance.Status.DONE,
+            due_date=self.today - timedelta(days=1),
+        )
+        self.assertEqual(auto_assign_overdue_instances(today=self.today), [])
+
+    def test_no_people_means_nothing_can_be_assigned(self):
+        Person.objects.all().delete()
+        instance = ChoreInstance.objects.create(
+            chore=self.chore, due_date=self.today - timedelta(days=1)
+        )
+        self.assertEqual(auto_assign_overdue_instances(today=self.today), [])
+        instance.refresh_from_db()
+        self.assertEqual(instance.status, ChoreInstance.Status.OPEN)
+
+    def test_multiple_overdue_instances_in_one_run_all_go_to_current_lowest(self):
+        # Documents current behavior: claiming doesn't award points, so
+        # the "lowest points" person doesn't change mid-run.
+        first = ChoreInstance.objects.create(
+            chore=self.chore, due_date=self.today - timedelta(days=2)
+        )
+        second = ChoreInstance.objects.create(
+            chore=self.chore, due_date=self.today - timedelta(days=1)
+        )
+        assigned = auto_assign_overdue_instances(today=self.today)
+        self.assertEqual(len(assigned), 2)
+        self.assertEqual(first.claimed_by_id, second.claimed_by_id)
+
+
+class AssignOverdueChoresCommandTests(TestCase):
+    def test_command_assigns_and_reports(self):
+        chore = Chore.objects.create(title="Dishes", points=3)
+        Person.objects.create(name="Alex")
+        ChoreInstance.objects.create(
+            chore=chore, due_date=date.today() - timedelta(days=1)
+        )
+        out = StringIO()
+        call_command("assign_overdue_chores", stdout=out)
+        self.assertIn("Dishes", out.getvalue())
+        self.assertIn("Alex", out.getvalue())
+        self.assertIn("Assigned 1 chore(s).", out.getvalue())
+
+    def test_command_reports_when_nothing_is_overdue(self):
+        out = StringIO()
+        call_command("assign_overdue_chores", stdout=out)
+        self.assertIn("No overdue chores to assign", out.getvalue())
