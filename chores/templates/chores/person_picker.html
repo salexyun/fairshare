@@ -6,7 +6,7 @@
     {% else %}
         <h2>Who are you?</h2>
         {% if people %}
-            <ul>
+            <ul class="person-list">
                 {% for person in people %}
                     <li>
                         <form method="post" action="{% url 'chores:select_person' person.id %}">

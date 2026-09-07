@@ -11,7 +11,7 @@
         </p>
     {% endif %}
     {% if instances %}
-        <table>
+        <table class="card-table">
             <thead>
                 <tr>
                     <th>Chore</th>
@@ -23,9 +23,9 @@
             <tbody>
                 {% for instance in instances %}
                     <tr>
-                        <td>{{ instance.chore.title }}</td>
-                        <td>{{ instance.chore.points }}</td>
-                        <td>{{ instance.due_date|default:"—" }}</td>
+                        <td data-label="Chore">{{ instance.chore.title }}</td>
+                        <td data-label="Points">{{ instance.chore.points }}</td>
+                        <td data-label="Due">{{ instance.due_date|default:"—" }}</td>
                         <td>
                             {% if current_person %}
                                 <form method="post" action="{% url 'chores:claim_chore' instance.id %}">
@@ -45,7 +45,7 @@
     {% if current_person %}
         <h2>Your Claimed Chores</h2>
         {% if claimed_by_me %}
-            <table>
+            <table class="card-table">
                 <thead>
                     <tr>
                         <th>Chore</th>
@@ -57,9 +57,9 @@
                 <tbody>
                     {% for instance in claimed_by_me %}
                         <tr>
-                            <td>{{ instance.chore.title }}</td>
-                            <td>{{ instance.chore.points }}</td>
-                            <td>{{ instance.due_date|default:"—" }}</td>
+                            <td data-label="Chore">{{ instance.chore.title }}</td>
+                            <td data-label="Points">{{ instance.chore.points }}</td>
+                            <td data-label="Due">{{ instance.due_date|default:"—" }}</td>
                             <td>
                                 <form method="post" action="{% url 'chores:complete_chore' instance.id %}">
                                     {% csrf_token %}

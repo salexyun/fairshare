@@ -5,7 +5,7 @@
 {% block content %}
     <h2>Leaderboard</h2>
     {% if people %}
-        <table>
+        <table class="card-table">
             <thead>
                 <tr>
                     <th>#</th>
@@ -16,9 +16,9 @@
             <tbody>
                 {% for person in people %}
                     <tr>
-                        <td>{{ forloop.counter }}</td>
-                        <td>{{ person.name }}</td>
-                        <td>{{ person.total_points }}</td>
+                        <td class="rank" data-label="#">{{ forloop.counter }}</td>
+                        <td data-label="Person">{{ person.name }}</td>
+                        <td data-label="Points">{{ person.total_points }}</td>
                     </tr>
                 {% endfor %}
             </tbody>

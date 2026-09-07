@@ -5,7 +5,7 @@
 {% block content %}
     <h2>History</h2>
     {% if completions %}
-        <table>
+        <table class="card-table">
             <thead>
                 <tr>
                     <th>When</th>
@@ -17,10 +17,10 @@
             <tbody>
                 {% for completion in completions %}
                     <tr>
-                        <td>{{ completion.completed_at|date:"Y-m-d H:i" }}</td>
-                        <td>{{ completion.person.name }}</td>
-                        <td>{{ completion.instance.chore.title }}</td>
-                        <td>{{ completion.points_awarded }}</td>
+                        <td data-label="When">{{ completion.completed_at|date:"Y-m-d H:i" }}</td>
+                        <td data-label="Person">{{ completion.person.name }}</td>
+                        <td data-label="Chore">{{ completion.instance.chore.title }}</td>
+                        <td data-label="Points">{{ completion.points_awarded }}</td>
                     </tr>
                 {% endfor %}
             </tbody>

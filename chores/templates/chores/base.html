@@ -1,27 +1,32 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}FairShare{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'chores/css/style.css' %}">
 </head>
 <body>
-    <header>
-        <h1><a href="{% url 'chores:person_picker' %}">FairShare</a></h1>
-        <nav>
-            <a href="{% url 'chores:chore_pool' %}">Chore Pool</a>
-            <a href="{% url 'chores:add_chore' %}">Add Chore</a>
-            <a href="{% url 'chores:leaderboard' %}">Leaderboard</a>
-            <a href="{% url 'chores:history' %}">History</a>
-        </nav>
-        {% if current_person %}
-            <p>
-                Acting as <strong>{{ current_person.name }}</strong>
-                <form method="post" action="{% url 'chores:switch_person' %}" style="display:inline">
-                    {% csrf_token %}
-                    <button type="submit">switch</button>
-                </form>
-            </p>
-        {% endif %}
+    <header class="site-header">
+        <div class="container">
+            <h1><a href="{% url 'chores:person_picker' %}">FairShare</a></h1>
+            <nav class="site-nav">
+                <a href="{% url 'chores:chore_pool' %}">Chore Pool</a>
+                <a href="{% url 'chores:add_chore' %}">Add Chore</a>
+                <a href="{% url 'chores:leaderboard' %}">Leaderboard</a>
+                <a href="{% url 'chores:history' %}">History</a>
+            </nav>
+            {% if current_person %}
+                <p class="acting-as">
+                    Acting as <strong>{{ current_person.name }}</strong>
+                    <form method="post" action="{% url 'chores:switch_person' %}">
+                        {% csrf_token %}
+                        <button type="submit">switch</button>
+                    </form>
+                </p>
+            {% endif %}
+        </div>
     </header>
 
     {% if messages %}
