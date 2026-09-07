@@ -32,18 +32,13 @@ what's intentionally out of scope for this version.
 
 ## Tech Stack
 
-- Python
-- Django
+- Python + Django, server-rendered templates (no separate frontend)
+- SQLite for local development
 - [uv](https://docs.astral.sh/uv/) for Python version, virtual env, and
   package management
-- (data model, deployment, and front-end approach TBD — see
-  [`_docs/plan.md`](_docs/plan.md) Next Steps)
+- Deployment target: TBD — see [`backlog.md`](backlog.md) task #11
 
 ## Getting Started
-
-> Project scaffolding is not yet in place. Once the Django project exists,
-> this section will cover local setup, migrations, and running the dev
-> server.
 
 Requires [uv](https://docs.astral.sh/uv/getting-started/installation/)
 installed locally. uv manages the virtual env and dependencies from
@@ -52,10 +47,26 @@ installed locally. uv manages the virtual env and dependencies from
 ```bash
 uv sync
 uv run python manage.py migrate
+uv run python manage.py createsuperuser   # for /admin access
 uv run python manage.py runserver
+```
+
+Then visit `http://127.0.0.1:8000/`. There's no sign-up flow — add your
+household's people and any chores via `/admin` first, then people pick
+their name from the list to act (honor system, no password).
+
+Two management commands drive the automated parts and are meant to run
+on a schedule (e.g. cron) in a real deployment:
+
+```bash
+uv run python manage.py generate_recurring_chores  # regenerate due recurring chores
+uv run python manage.py assign_overdue_chores       # auto-assign overdue chores
 ```
 
 ## Status
 
-Early planning stage — see [`_docs/plan.md`](_docs/plan.md) for scope and
-next steps.
+Core app is built end-to-end: data model, person picker, chore pool
+(claim/complete/add one-off), recurring chore generation, overdue
+auto-assignment, leaderboard, history log, and responsive styling.
+See [`backlog.md`](backlog.md) for the full task list — deployment
+(task #11) is the remaining item.
