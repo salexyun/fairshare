@@ -1,8 +1,8 @@
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .models import ChoreInstance, Person
-from .session import clear_current_person, set_current_person
+from .models import ChoreInstance, Completion, Person
+from .session import clear_current_person, get_current_person, set_current_person
 
 
 def person_picker(request):
@@ -30,7 +30,63 @@ def switch_person(request):
 
 def chore_pool(request):
     """Shared pool of open chores — recurring and one-off alike — anyone can see."""
+    current_person = get_current_person(request)
     instances = ChoreInstance.objects.filter(
         status=ChoreInstance.Status.OPEN
     ).select_related("chore")
-    return render(request, "chores/chore_pool.html", {"instances": instances})
+    claimed_by_me = ChoreInstance.objects.none()
+    if current_person:
+        claimed_by_me = ChoreInstance.objects.filter(
+            status=ChoreInstance.Status.CLAIMED, claimed_by=current_person
+        ).select_related("chore")
+    return render(
+        request,
+        "chores/chore_pool.html",
+        {"instances": instances, "claimed_by_me": claimed_by_me},
+    )
+
+
+def claim_chore(request, instance_id):
+    """Claim an open chore instance from the pool. Self-report, no approval."""
+    if request.method != "POST":
+        return redirect("chores:chore_pool")
+    current_person = get_current_person(request)
+    if not current_person:
+        messages.error(request, "Pick your name before claiming a chore.")
+        return redirect("chores:person_picker")
+    instance = get_object_or_404(ChoreInstance, pk=instance_id)
+    if instance.status != ChoreInstance.Status.OPEN:
+        messages.error(request, "That chore isn't open to claim anymore.")
+        return redirect("chores:chore_pool")
+    instance.status = ChoreInstance.Status.CLAIMED
+    instance.claimed_by = current_person
+    instance.save()
+    messages.success(request, f'You claimed "{instance.chore.title}".')
+    return redirect("chores:chore_pool")
+
+
+def complete_chore(request, instance_id):
+    """Mark a claimed chore instance done and award its points. Self-report."""
+    if request.method != "POST":
+        return redirect("chores:chore_pool")
+    current_person = get_current_person(request)
+    if not current_person:
+        messages.error(request, "Pick your name before completing a chore.")
+        return redirect("chores:person_picker")
+    instance = get_object_or_404(ChoreInstance, pk=instance_id)
+    if (
+        instance.status != ChoreInstance.Status.CLAIMED
+        or instance.claimed_by_id != current_person.id
+    ):
+        messages.error(request, "You can only mark done a chore you've claimed.")
+        return redirect("chores:chore_pool")
+    points = instance.chore.points
+    Completion.objects.create(
+        instance=instance, person=current_person, points_awarded=points
+    )
+    instance.status = ChoreInstance.Status.DONE
+    instance.save()
+    messages.success(
+        request, f'Nice work — "{instance.chore.title}" done (+{points} pts).'
+    )
+    return redirect("chores:chore_pool")

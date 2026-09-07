@@ -261,3 +261,155 @@ class ChorePoolViewTests(TestCase):
         self.assertEqual(
             list(response.context["instances"]), [sooner, later]
         )
+
+
+class ClaimAndCompleteViewTests(TestCase):
+    def setUp(self):
+        self.chore = Chore.objects.create(title="Wash dishes", points=4)
+        self.instance = ChoreInstance.objects.create(chore=self.chore)
+        self.alex = Person.objects.create(name="Alex")
+        self.sam = Person.objects.create(name="Sam")
+
+    def _act_as(self, person):
+        self.client.post(reverse("chores:select_person", args=[person.pk]))
+
+    # -- claim --
+
+    def test_claim_requires_post(self):
+        response = self.client.get(reverse("chores:claim_chore", args=[self.instance.pk]))
+        self.assertRedirects(response, reverse("chores:chore_pool"))
+        self.instance.refresh_from_db()
+        self.assertEqual(self.instance.status, ChoreInstance.Status.OPEN)
+
+    def test_claim_requires_a_current_person(self):
+        response = self.client.post(
+            reverse("chores:claim_chore", args=[self.instance.pk])
+        )
+        self.assertRedirects(response, reverse("chores:person_picker"))
+        self.instance.refresh_from_db()
+        self.assertEqual(self.instance.status, ChoreInstance.Status.OPEN)
+        self.assertIsNone(self.instance.claimed_by)
+
+    def test_claim_success(self):
+        self._act_as(self.alex)
+        response = self.client.post(
+            reverse("chores:claim_chore", args=[self.instance.pk])
+        )
+        self.assertRedirects(response, reverse("chores:chore_pool"))
+        self.instance.refresh_from_db()
+        self.assertEqual(self.instance.status, ChoreInstance.Status.CLAIMED)
+        self.assertEqual(self.instance.claimed_by, self.alex)
+
+    def test_claim_fails_for_already_claimed_instance(self):
+        self.instance.status = ChoreInstance.Status.CLAIMED
+        self.instance.claimed_by = self.sam
+        self.instance.save()
+        self._act_as(self.alex)
+        response = self.client.post(
+            reverse("chores:claim_chore", args=[self.instance.pk])
+        )
+        self.assertRedirects(response, reverse("chores:chore_pool"))
+        self.instance.refresh_from_db()
+        self.assertEqual(self.instance.claimed_by, self.sam)
+
+    def test_claim_404s_for_unknown_instance(self):
+        self._act_as(self.alex)
+        response = self.client.post(reverse("chores:claim_chore", args=[9999]))
+        self.assertEqual(response.status_code, 404)
+
+    # -- complete --
+
+    def test_complete_requires_post(self):
+        self.instance.status = ChoreInstance.Status.CLAIMED
+        self.instance.claimed_by = self.alex
+        self.instance.save()
+        self._act_as(self.alex)
+        response = self.client.get(
+            reverse("chores:complete_chore", args=[self.instance.pk])
+        )
+        self.assertRedirects(response, reverse("chores:chore_pool"))
+        self.assertFalse(Completion.objects.exists())
+
+    def test_complete_requires_a_current_person(self):
+        response = self.client.post(
+            reverse("chores:complete_chore", args=[self.instance.pk])
+        )
+        self.assertRedirects(response, reverse("chores:person_picker"))
+        self.assertFalse(Completion.objects.exists())
+
+    def test_complete_success_awards_points_and_closes_instance(self):
+        self.instance.status = ChoreInstance.Status.CLAIMED
+        self.instance.claimed_by = self.alex
+        self.instance.save()
+        self._act_as(self.alex)
+        response = self.client.post(
+            reverse("chores:complete_chore", args=[self.instance.pk])
+        )
+        self.assertRedirects(response, reverse("chores:chore_pool"))
+        self.instance.refresh_from_db()
+        self.assertEqual(self.instance.status, ChoreInstance.Status.DONE)
+        completion = Completion.objects.get(instance=self.instance)
+        self.assertEqual(completion.person, self.alex)
+        self.assertEqual(completion.points_awarded, 4)
+
+    def test_complete_fails_when_not_claimed_by_current_person(self):
+        self.instance.status = ChoreInstance.Status.CLAIMED
+        self.instance.claimed_by = self.sam
+        self.instance.save()
+        self._act_as(self.alex)
+        response = self.client.post(
+            reverse("chores:complete_chore", args=[self.instance.pk])
+        )
+        self.assertRedirects(response, reverse("chores:chore_pool"))
+        self.instance.refresh_from_db()
+        self.assertEqual(self.instance.status, ChoreInstance.Status.CLAIMED)
+        self.assertFalse(Completion.objects.exists())
+
+    def test_complete_fails_for_still_open_instance(self):
+        self._act_as(self.alex)
+        response = self.client.post(
+            reverse("chores:complete_chore", args=[self.instance.pk])
+        )
+        self.assertRedirects(response, reverse("chores:chore_pool"))
+        self.instance.refresh_from_db()
+        self.assertEqual(self.instance.status, ChoreInstance.Status.OPEN)
+        self.assertFalse(Completion.objects.exists())
+
+    def test_complete_fails_for_already_done_instance(self):
+        self.instance.status = ChoreInstance.Status.CLAIMED
+        self.instance.claimed_by = self.alex
+        self.instance.save()
+        Completion.objects.create(
+            instance=self.instance, person=self.alex, points_awarded=4
+        )
+        self.instance.status = ChoreInstance.Status.DONE
+        self.instance.save()
+        self._act_as(self.alex)
+        response = self.client.post(
+            reverse("chores:complete_chore", args=[self.instance.pk])
+        )
+        self.assertRedirects(response, reverse("chores:chore_pool"))
+        self.assertEqual(Completion.objects.filter(instance=self.instance).count(), 1)
+
+    # -- pool page reflects claim state --
+
+    def test_pool_shows_claim_button_only_when_a_person_is_acting(self):
+        response = self.client.get(reverse("chores:chore_pool"))
+        self.assertNotContains(response, "Claim")
+        self.assertContains(response, "Pick your name")
+
+        self._act_as(self.alex)
+        response = self.client.get(reverse("chores:chore_pool"))
+        self.assertContains(response, "Claim")
+
+    def test_pool_shows_only_my_claimed_chores(self):
+        mine = ChoreInstance.objects.create(
+            chore=self.chore, status=ChoreInstance.Status.CLAIMED, claimed_by=self.alex
+        )
+        theirs = ChoreInstance.objects.create(
+            chore=self.chore, status=ChoreInstance.Status.CLAIMED, claimed_by=self.sam
+        )
+        self._act_as(self.alex)
+        response = self.client.get(reverse("chores:chore_pool"))
+        self.assertIn(mine, response.context["claimed_by_me"])
+        self.assertNotIn(theirs, response.context["claimed_by_me"])

@@ -9,4 +9,10 @@ urlpatterns = [
     path("people/<int:person_id>/select/", views.select_person, name="select_person"),
     path("switch/", views.switch_person, name="switch_person"),
     path("pool/", views.chore_pool, name="chore_pool"),
+    path("instances/<int:instance_id>/claim/", views.claim_chore, name="claim_chore"),
+    path(
+        "instances/<int:instance_id>/complete/",
+        views.complete_chore,
+        name="complete_chore",
+    ),
 ]

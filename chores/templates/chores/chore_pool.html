@@ -4,6 +4,12 @@
 
 {% block content %}
     <h2>Chore Pool</h2>
+    {% if not current_person %}
+        <p>
+            <a href="{% url 'chores:person_picker' %}">Pick your name</a>
+            to claim or complete chores.
+        </p>
+    {% endif %}
     {% if instances %}
         <table>
             <thead>
@@ -11,6 +17,7 @@
                     <th>Chore</th>
                     <th>Points</th>
                     <th>Due</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -19,11 +26,52 @@
                         <td>{{ instance.chore.title }}</td>
                         <td>{{ instance.chore.points }}</td>
                         <td>{{ instance.due_date|default:"—" }}</td>
+                        <td>
+                            {% if current_person %}
+                                <form method="post" action="{% url 'chores:claim_chore' instance.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit">Claim</button>
+                                </form>
+                            {% endif %}
+                        </td>
                     </tr>
                 {% endfor %}
             </tbody>
         </table>
     {% else %}
         <p>No open chores right now. 🎉</p>
+    {% endif %}
+
+    {% if current_person %}
+        <h2>Your Claimed Chores</h2>
+        {% if claimed_by_me %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Chore</th>
+                        <th>Points</th>
+                        <th>Due</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for instance in claimed_by_me %}
+                        <tr>
+                            <td>{{ instance.chore.title }}</td>
+                            <td>{{ instance.chore.points }}</td>
+                            <td>{{ instance.due_date|default:"—" }}</td>
+                            <td>
+                                <form method="post" action="{% url 'chores:complete_chore' instance.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit">Done</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>You haven't claimed anything yet.</p>
+        {% endif %}
     {% endif %}
 {% endblock %}
