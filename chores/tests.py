@@ -413,3 +413,57 @@ class ClaimAndCompleteViewTests(TestCase):
         response = self.client.get(reverse("chores:chore_pool"))
         self.assertIn(mine, response.context["claimed_by_me"])
         self.assertNotIn(theirs, response.context["claimed_by_me"])
+
+
+class AddChoreViewTests(TestCase):
+    def test_get_renders_empty_form(self):
+        response = self.client.get(reverse("chores:add_chore"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Add a One-Off Chore")
+
+    def test_valid_post_creates_one_off_chore_and_instance(self):
+        response = self.client.post(
+            reverse("chores:add_chore"),
+            {"title": "Fix the fence", "points": 7, "due_date": ""},
+        )
+        self.assertRedirects(response, reverse("chores:chore_pool"))
+
+        chore = Chore.objects.get(title="Fix the fence")
+        self.assertEqual(chore.points, 7)
+        self.assertEqual(chore.recurrence, Chore.Recurrence.NONE)
+
+        instance = ChoreInstance.objects.get(chore=chore)
+        self.assertEqual(instance.status, ChoreInstance.Status.OPEN)
+        self.assertIsNone(instance.due_date)
+
+    def test_valid_post_with_due_date(self):
+        due = date.today() + timedelta(days=3)
+        self.client.post(
+            reverse("chores:add_chore"),
+            {"title": "Water plants", "points": 1, "due_date": due.isoformat()},
+        )
+        instance = ChoreInstance.objects.get(chore__title="Water plants")
+        self.assertEqual(instance.due_date, due)
+
+    def test_new_chore_appears_in_open_pool(self):
+        self.client.post(
+            reverse("chores:add_chore"), {"title": "Sweep porch", "points": 2}
+        )
+        response = self.client.get(reverse("chores:chore_pool"))
+        self.assertContains(response, "Sweep porch")
+
+    def test_missing_title_does_not_create_a_chore(self):
+        response = self.client.post(
+            reverse("chores:add_chore"), {"title": "", "points": 3}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Chore.objects.exists())
+
+    def test_zero_points_is_rejected_by_the_form(self):
+        # Stricter than the model, which allows 0 (see
+        # ChoreModelTests.test_zero_points_is_currently_allowed).
+        response = self.client.post(
+            reverse("chores:add_chore"), {"title": "Free chore", "points": 0}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Chore.objects.exists())

@@ -1,0 +1,12 @@
+{% extends "chores/base.html" %}
+
+{% block title %}Add a Chore — FairShare{% endblock %}
+
+{% block content %}
+    <h2>Add a One-Off Chore</h2>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Add to Pool</button>
+    </form>
+{% endblock %}

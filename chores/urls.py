@@ -15,4 +15,5 @@ urlpatterns = [
         views.complete_chore,
         name="complete_chore",
     ),
+    path("chores/add/", views.add_chore, name="add_chore"),
 ]

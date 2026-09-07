@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 
+from .forms import AddOneOffChoreForm
 from .models import ChoreInstance, Completion, Person
 from .session import clear_current_person, get_current_person, set_current_person
 
@@ -90,3 +91,16 @@ def complete_chore(request, instance_id):
         request, f'Nice work — "{instance.chore.title}" done (+{points} pts).'
     )
     return redirect("chores:chore_pool")
+
+
+def add_chore(request):
+    """Add an ad-hoc one-off chore straight into the pool."""
+    if request.method == "POST":
+        form = AddOneOffChoreForm(request.POST)
+        if form.is_valid():
+            instance = form.save()
+            messages.success(request, f'Added "{instance.chore.title}" to the pool.')
+            return redirect("chores:chore_pool")
+    else:
+        form = AddOneOffChoreForm()
+    return render(request, "chores/add_chore.html", {"form": form})
