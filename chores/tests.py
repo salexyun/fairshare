@@ -677,9 +677,17 @@ class AutoAssignOverdueInstancesTests(TestCase):
         instance.refresh_from_db()
         self.assertEqual(instance.status, ChoreInstance.Status.OPEN)
 
-    def test_multiple_overdue_instances_in_one_run_all_go_to_current_lowest(self):
-        # Documents current behavior: claiming doesn't award points, so
-        # the "lowest points" person doesn't change mid-run.
+    def test_multiple_overdue_instances_spread_across_close_totals(self):
+        # Alex (0 pts) and Sam (1 pt) start close together, so once Alex
+        # provisionally "gains" this chore's 3 points, Sam becomes the
+        # lower of the two for the next one.
+        Completion.objects.create(
+            instance=ChoreInstance.objects.create(
+                chore=self.chore, status=ChoreInstance.Status.DONE
+            ),
+            person=self.sam,
+            points_awarded=1,
+        )
         first = ChoreInstance.objects.create(
             chore=self.chore, due_date=self.today - timedelta(days=2)
         )
@@ -688,7 +696,43 @@ class AutoAssignOverdueInstancesTests(TestCase):
         )
         assigned = auto_assign_overdue_instances(today=self.today)
         self.assertEqual(len(assigned), 2)
-        self.assertEqual(first.claimed_by_id, second.claimed_by_id)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.claimed_by, self.alex)
+        self.assertEqual(second.claimed_by, self.sam)
+
+    def test_multiple_overdue_instances_stay_with_one_person_over_a_wide_gap(self):
+        # Sam is way ahead, so even after Alex's provisional bump from the
+        # first chore, Alex is still behind and rightly gets the second too.
+        Completion.objects.create(
+            instance=ChoreInstance.objects.create(
+                chore=self.chore, status=ChoreInstance.Status.DONE
+            ),
+            person=self.sam,
+            points_awarded=100,
+        )
+        first = ChoreInstance.objects.create(
+            chore=self.chore, due_date=self.today - timedelta(days=2)
+        )
+        second = ChoreInstance.objects.create(
+            chore=self.chore, due_date=self.today - timedelta(days=1)
+        )
+        assigned = auto_assign_overdue_instances(today=self.today)
+        self.assertEqual(len(assigned), 2)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.claimed_by, self.alex)
+        self.assertEqual(second.claimed_by, self.alex)
+
+    def test_provisional_weighting_is_not_persisted_to_real_points(self):
+        overdue = ChoreInstance.objects.create(
+            chore=self.chore, due_date=self.today - timedelta(days=1)
+        )
+        auto_assign_overdue_instances(today=self.today)
+        overdue.refresh_from_db()
+        # Claiming, even via auto-assignment, must not create a Completion
+        # or otherwise touch real point totals — only completing does.
+        self.assertFalse(Completion.objects.filter(person=overdue.claimed_by).exists())
 
 
 class AssignOverdueChoresCommandTests(TestCase):

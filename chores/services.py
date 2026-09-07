@@ -51,19 +51,6 @@ def generate_recurring_instances(today=None):
     return created
 
 
-def _person_with_fewest_points():
-    """The Person with the lowest total (completed) points, or None if the
-    household has nobody in it. Ties broken alphabetically for determinism.
-    """
-    return (
-        Person.objects.annotate(
-            total_points=Coalesce(Sum("completions__points_awarded"), 0)
-        )
-        .order_by("total_points", "name")
-        .first()
-    )
-
-
 def auto_assign_overdue_instances(today=None):
     """Assign unclaimed, overdue ChoreInstances to whoever has the fewest points.
 
@@ -71,12 +58,13 @@ def auto_assign_overdue_instances(today=None):
     a chore due today still has today to be claimed normally. Instances
     with no due_date are never overdue.
 
-    Note: since claiming doesn't award points (only completing does), if
-    several instances are overdue in the same run they will all land on
-    the same person — whoever currently has the fewest points doesn't
-    change until they actually complete something. That's a deliberate
-    reading of "whoever currently has the lowest points," not a bug;
-    fairness evens out across subsequent runs as points get awarded.
+    Within a single run, each assigned chore's points are added to that
+    person's total *provisionally*, in memory only, purely to decide who
+    gets the next overdue chore in this same run — actual points are
+    still only awarded on completion, and nothing provisional is
+    persisted. This spreads a multi-chore backlog across whoever's
+    behind rather than dumping it all on one person just because points
+    don't move until something is actually completed.
 
     Returns the list of instances that were assigned.
     """
@@ -85,14 +73,22 @@ def auto_assign_overdue_instances(today=None):
         status=ChoreInstance.Status.OPEN, due_date__lt=today
     ).select_related("chore")
 
+    people = list(
+        Person.objects.annotate(
+            total_points=Coalesce(Sum("completions__points_awarded"), 0)
+        )
+    )
+    if not people:
+        return []
+    effective_points = {person.id: person.total_points for person in people}
+
     assigned = []
     for instance in overdue:
-        person = _person_with_fewest_points()
-        if person is None:
-            break  # nobody in the household to assign to
+        person = min(people, key=lambda p: (effective_points[p.id], p.name))
         instance.status = ChoreInstance.Status.CLAIMED
         instance.claimed_by = person
         instance.save()
+        effective_points[person.id] += instance.chore.points
         assigned.append(instance)
 
     return assigned
