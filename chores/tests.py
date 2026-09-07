@@ -1,11 +1,15 @@
 from datetime import date, timedelta
+from io import StringIO
 
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from .models import Chore, ChoreInstance, Completion, Person
+from .services import generate_recurring_instances
 from .session import PERSON_SESSION_KEY
 
 
@@ -467,3 +471,126 @@ class AddChoreViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Chore.objects.exists())
+
+
+def _backdate(instance, days_ago):
+    """Force an instance's created_at into the past, bypassing auto_now_add
+    (QuerySet.update() skips model-level auto_now_add handling)."""
+    past = timezone.now() - timedelta(days=days_ago)
+    ChoreInstance.objects.filter(pk=instance.pk).update(created_at=past)
+    instance.refresh_from_db()
+    return instance
+
+
+class GenerateRecurringInstancesTests(TestCase):
+    def setUp(self):
+        self.today = date(2026, 9, 7)
+
+    def test_one_off_chore_never_generates(self):
+        Chore.objects.create(title="Fix fence", recurrence=Chore.Recurrence.NONE)
+        created = generate_recurring_instances(today=self.today)
+        self.assertEqual(created, [])
+
+    def test_inactive_chore_never_generates(self):
+        Chore.objects.create(
+            title="Dishes",
+            recurrence=Chore.Recurrence.DAILY,
+            is_active=False,
+        )
+        created = generate_recurring_instances(today=self.today)
+        self.assertEqual(created, [])
+
+    def test_daily_chore_with_no_history_generates_due_today(self):
+        chore = Chore.objects.create(title="Dishes", recurrence=Chore.Recurrence.DAILY)
+        created = generate_recurring_instances(today=self.today)
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0].chore, chore)
+        self.assertEqual(created[0].due_date, self.today)
+
+    def test_weekly_chore_with_no_history_generates_due_in_six_days(self):
+        chore = Chore.objects.create(
+            title="Vacuum", recurrence=Chore.Recurrence.WEEKLY
+        )
+        created = generate_recurring_instances(today=self.today)
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0].chore, chore)
+        self.assertEqual(created[0].due_date, self.today + timedelta(days=6))
+
+    def test_skips_chore_with_a_pending_open_instance(self):
+        chore = Chore.objects.create(title="Dishes", recurrence=Chore.Recurrence.DAILY)
+        _backdate(
+            ChoreInstance.objects.create(chore=chore), days_ago=5
+        )
+        created = generate_recurring_instances(today=self.today)
+        self.assertEqual(created, [])
+        self.assertEqual(chore.instances.count(), 1)
+
+    def test_skips_chore_with_a_pending_claimed_instance(self):
+        chore = Chore.objects.create(title="Dishes", recurrence=Chore.Recurrence.DAILY)
+        person = Person.objects.create(name="Alex")
+        _backdate(
+            ChoreInstance.objects.create(
+                chore=chore,
+                status=ChoreInstance.Status.CLAIMED,
+                claimed_by=person,
+            ),
+            days_ago=5,
+        )
+        created = generate_recurring_instances(today=self.today)
+        self.assertEqual(created, [])
+
+    def test_daily_chore_does_not_regenerate_same_day(self):
+        chore = Chore.objects.create(title="Dishes", recurrence=Chore.Recurrence.DAILY)
+        _backdate(
+            ChoreInstance.objects.create(chore=chore, status=ChoreInstance.Status.DONE),
+            days_ago=0,
+        )
+        created = generate_recurring_instances(today=self.today)
+        self.assertEqual(created, [])
+
+    def test_daily_chore_regenerates_after_a_day_has_passed(self):
+        chore = Chore.objects.create(title="Dishes", recurrence=Chore.Recurrence.DAILY)
+        _backdate(
+            ChoreInstance.objects.create(chore=chore, status=ChoreInstance.Status.DONE),
+            days_ago=1,
+        )
+        created = generate_recurring_instances(today=self.today)
+        self.assertEqual(len(created), 1)
+        self.assertEqual(chore.instances.count(), 2)
+
+    def test_weekly_chore_not_yet_due(self):
+        chore = Chore.objects.create(
+            title="Vacuum", recurrence=Chore.Recurrence.WEEKLY
+        )
+        _backdate(
+            ChoreInstance.objects.create(chore=chore, status=ChoreInstance.Status.DONE),
+            days_ago=6,
+        )
+        created = generate_recurring_instances(today=self.today)
+        self.assertEqual(created, [])
+
+    def test_weekly_chore_due_after_seven_days(self):
+        chore = Chore.objects.create(
+            title="Vacuum", recurrence=Chore.Recurrence.WEEKLY
+        )
+        _backdate(
+            ChoreInstance.objects.create(chore=chore, status=ChoreInstance.Status.DONE),
+            days_ago=7,
+        )
+        created = generate_recurring_instances(today=self.today)
+        self.assertEqual(len(created), 1)
+
+
+class GenerateRecurringChoresCommandTests(TestCase):
+    def test_command_creates_instances_and_reports_them(self):
+        chore = Chore.objects.create(title="Dishes", recurrence=Chore.Recurrence.DAILY)
+        out = StringIO()
+        call_command("generate_recurring_chores", stdout=out)
+        self.assertEqual(chore.instances.count(), 1)
+        self.assertIn("Dishes", out.getvalue())
+        self.assertIn("Generated 1 instance(s).", out.getvalue())
+
+    def test_command_reports_when_nothing_is_due(self):
+        out = StringIO()
+        call_command("generate_recurring_chores", stdout=out)
+        self.assertIn("No recurring chores due", out.getvalue())
