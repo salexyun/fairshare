@@ -1,0 +1,23 @@
+{% extends "chores/base.html" %}
+
+{% block content %}
+    {% if current_person %}
+        <p>You're acting as <strong>{{ current_person.name }}</strong>.</p>
+    {% else %}
+        <h2>Who are you?</h2>
+        {% if people %}
+            <ul>
+                {% for person in people %}
+                    <li>
+                        <form method="post" action="{% url 'chores:select_person' person.id %}">
+                            {% csrf_token %}
+                            <button type="submit">{{ person.name }}</button>
+                        </form>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No household members yet. Add people in the admin.</p>
+        {% endif %}
+    {% endif %}
+{% endblock %}

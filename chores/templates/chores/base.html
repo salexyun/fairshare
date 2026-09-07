@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}FairShare{% endblock %}</title>
+</head>
+<body>
+    <header>
+        <h1><a href="{% url 'chores:person_picker' %}">FairShare</a></h1>
+        {% if current_person %}
+            <p>
+                Acting as <strong>{{ current_person.name }}</strong>
+                <form method="post" action="{% url 'chores:switch_person' %}" style="display:inline">
+                    {% csrf_token %}
+                    <button type="submit">switch</button>
+                </form>
+            </p>
+        {% endif %}
+    </header>
+
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li>{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

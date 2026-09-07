@@ -3,8 +3,10 @@ from datetime import date, timedelta
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
+from django.urls import reverse
 
 from .models import Chore, ChoreInstance, Completion, Person
+from .session import PERSON_SESSION_KEY
 
 
 class PersonModelTests(TestCase):
@@ -164,3 +166,51 @@ class CompletionModelTests(TestCase):
             instance=instance2, person=self.person, points_awarded=2
         )
         self.assertEqual(list(Completion.objects.all()), [second, first])
+
+
+class PersonPickerViewTests(TestCase):
+    def setUp(self):
+        self.alex = Person.objects.create(name="Alex")
+        self.sam = Person.objects.create(name="Sam")
+
+    def test_picker_lists_all_people_when_no_one_is_acting(self):
+        response = self.client.get(reverse("chores:person_picker"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Alex")
+        self.assertContains(response, "Sam")
+        self.assertNotContains(response, "You're acting as")
+
+    def test_picker_shows_fallback_when_no_people_exist(self):
+        Person.objects.all().delete()
+        response = self.client.get(reverse("chores:person_picker"))
+        self.assertContains(response, "No household members yet")
+
+    def test_select_person_sets_session_and_redirects(self):
+        response = self.client.post(
+            reverse("chores:select_person", args=[self.alex.pk])
+        )
+        self.assertRedirects(response, reverse("chores:person_picker"))
+        self.assertEqual(self.client.session[PERSON_SESSION_KEY], self.alex.pk)
+
+    def test_picker_shows_acting_person_after_selection(self):
+        self.client.post(reverse("chores:select_person", args=[self.alex.pk]))
+        response = self.client.get(reverse("chores:person_picker"))
+        self.assertContains(response, "You're acting as")
+        self.assertContains(response, "Alex")
+
+    def test_select_person_requires_post(self):
+        response = self.client.get(
+            reverse("chores:select_person", args=[self.alex.pk])
+        )
+        self.assertRedirects(response, reverse("chores:person_picker"))
+        self.assertNotIn(PERSON_SESSION_KEY, self.client.session)
+
+    def test_select_person_404s_for_unknown_person(self):
+        response = self.client.post(reverse("chores:select_person", args=[9999]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_switch_person_clears_session(self):
+        self.client.post(reverse("chores:select_person", args=[self.alex.pk]))
+        response = self.client.post(reverse("chores:switch_person"))
+        self.assertRedirects(response, reverse("chores:person_picker"))
+        self.assertNotIn(PERSON_SESSION_KEY, self.client.session)
