@@ -752,3 +752,51 @@ class AssignOverdueChoresCommandTests(TestCase):
         out = StringIO()
         call_command("assign_overdue_chores", stdout=out)
         self.assertIn("No overdue chores to assign", out.getvalue())
+
+
+class LeaderboardViewTests(TestCase):
+    def test_shows_fallback_when_no_people_exist(self):
+        response = self.client.get(reverse("chores:leaderboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No household members yet")
+
+    def test_person_with_no_completions_shows_zero_points(self):
+        Person.objects.create(name="Alex")
+        response = self.client.get(reverse("chores:leaderboard"))
+        self.assertContains(response, "Alex")
+        people = list(response.context["people"])
+        self.assertEqual(people[0].total_points, 0)
+
+    def test_totals_sum_multiple_completions_per_person(self):
+        chore = Chore.objects.create(title="Dishes", points=3)
+        alex = Person.objects.create(name="Alex")
+        for _ in range(3):
+            instance = ChoreInstance.objects.create(
+                chore=chore, status=ChoreInstance.Status.DONE
+            )
+            Completion.objects.create(
+                instance=instance, person=alex, points_awarded=3
+            )
+        response = self.client.get(reverse("chores:leaderboard"))
+        people = list(response.context["people"])
+        self.assertEqual(people[0].total_points, 9)
+
+    def test_ordered_by_points_descending(self):
+        chore = Chore.objects.create(title="Dishes", points=5)
+        alex = Person.objects.create(name="Alex")
+        sam = Person.objects.create(name="Sam")
+        instance = ChoreInstance.objects.create(
+            chore=chore, status=ChoreInstance.Status.DONE
+        )
+        Completion.objects.create(instance=instance, person=alex, points_awarded=5)
+        # Sam has 0 completions and should still appear, below Alex.
+        response = self.client.get(reverse("chores:leaderboard"))
+        names = [person.name for person in response.context["people"]]
+        self.assertEqual(names, ["Alex", "Sam"])
+
+    def test_ties_broken_alphabetically(self):
+        Person.objects.create(name="Sam")
+        Person.objects.create(name="Alex")
+        response = self.client.get(reverse("chores:leaderboard"))
+        names = [person.name for person in response.context["people"]]
+        self.assertEqual(names, ["Alex", "Sam"])

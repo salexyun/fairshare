@@ -1,0 +1,29 @@
+{% extends "chores/base.html" %}
+
+{% block title %}Leaderboard — FairShare{% endblock %}
+
+{% block content %}
+    <h2>Leaderboard</h2>
+    {% if people %}
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Person</th>
+                    <th>Points</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for person in people %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td>{{ person.name }}</td>
+                        <td>{{ person.total_points }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No household members yet. Add people in the admin.</p>
+    {% endif %}
+{% endblock %}

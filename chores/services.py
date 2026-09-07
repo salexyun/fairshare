@@ -16,6 +16,16 @@ RECURRENCE_INTERVALS = {
 PENDING_STATUSES = [ChoreInstance.Status.OPEN, ChoreInstance.Status.CLAIMED]
 
 
+def people_with_total_points():
+    """Everyone in the household annotated with total_points — the sum of
+    their Completion.points_awarded, or 0 if they haven't completed
+    anything yet. Unordered; callers sort as they need.
+    """
+    return Person.objects.annotate(
+        total_points=Coalesce(Sum("completions__points_awarded"), 0)
+    )
+
+
 def generate_recurring_instances(today=None):
     """Create a new ChoreInstance for each active recurring Chore that's due.
 
@@ -73,11 +83,7 @@ def auto_assign_overdue_instances(today=None):
         status=ChoreInstance.Status.OPEN, due_date__lt=today
     ).select_related("chore")
 
-    people = list(
-        Person.objects.annotate(
-            total_points=Coalesce(Sum("completions__points_awarded"), 0)
-        )
-    )
+    people = list(people_with_total_points())
     if not people:
         return []
     effective_points = {person.id: person.total_points for person in people}

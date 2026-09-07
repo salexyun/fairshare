@@ -3,6 +3,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import AddOneOffChoreForm
 from .models import ChoreInstance, Completion, Person
+from .services import people_with_total_points
 from .session import clear_current_person, get_current_person, set_current_person
 
 
@@ -104,3 +105,9 @@ def add_chore(request):
     else:
         form = AddOneOffChoreForm()
     return render(request, "chores/add_chore.html", {"form": form})
+
+
+def leaderboard(request):
+    """Running point totals per person, most points first."""
+    people = people_with_total_points().order_by("-total_points", "name")
+    return render(request, "chores/leaderboard.html", {"people": people})
